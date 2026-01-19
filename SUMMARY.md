@@ -47,7 +47,7 @@
 
 - For Developers
   - [API Overview](developers/api-overview.md)
-  - [API Reference](developers/api-reference.md)
+  - [Info API Reference](developers/api-reference.md)
   - [TypeScript SDK](developers/typescript-sdk.md)
   - [WebSocket API](developers/websocket.md)
-  - [Examples](developers/examples.md)
+  - [Code Examples](developers/examples.md)

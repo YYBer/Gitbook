@@ -1,24 +1,25 @@
 # WebSocket API
 
-The Fibe WebSocket API provides real-time streaming data for market updates, orderbook changes, and trade events.
+The Fibe WebSocket API provides real-time streaming data for market updates, orderbook changes, trade events, and user order updates.
 
 ## Connection
 
-### WebSocket URL
+### WebSocket URLs
 
-```
-wss://api.fibe.com/ws
-```
+| Environment | URL |
+|-------------|-----|
+| **Mainnet** | `wss://api.fibe.com/ws` |
+| **Testnet** | `wss://api.fibe-testnet.com/ws` |
 
-### Using the TypeScript SDK
+### Using the SDK (Recommended)
 
 ```typescript
-import { FibeWebSocket } from '@fibe/ts-sdk';
+import { api } from '@anthropic-ai/fibe-sdk';
 
-const ws = new FibeWebSocket({
-  url: 'wss://api.fibe.com/ws',
-  reconnect: true
-});
+const subscriptions = await api.WebSocketSubscriptions.create(
+  'wss://api.fibe.com/ws',
+  (error) => console.error('WebSocket error:', error)
+);
 ```
 
 ### Raw WebSocket Connection
@@ -31,8 +32,8 @@ ws.onopen = () => {
 };
 
 ws.onmessage = (event) => {
-  const data = JSON.parse(event.data);
-  console.log('Received:', data);
+  const message = JSON.parse(event.data);
+  console.log('Received:', message);
 };
 
 ws.onerror = (error) => {
@@ -44,27 +45,49 @@ ws.onclose = () => {
 };
 ```
 
+---
+
 ## Subscription Channels
 
-### L2 Orderbook Updates
+### L2 Orderbook
 
 Subscribe to real-time orderbook updates for a specific market.
 
+**SDK:**
 ```typescript
-// Using SDK
-ws.subscribe({
-  type: 'l2Book',
-  marketIndex: 0,
-  priceStep: 100
-});
+const subscription = subscriptions.subscribeToL2Book(
+  0,      // marketIndex
+  0.01,   // priceStep
+  (data) => {
+    console.log('Orderbook update:', data);
+    console.log('Best bid:', data.bids[0]);
+    console.log('Best ask:', data.asks[0]);
+  }
+);
 
-// Raw message
+// Unsubscribe when done
+subscription.unsubscribe();
+```
+
+**Raw WebSocket:**
+```typescript
+// Subscribe
 ws.send(JSON.stringify({
   method: 'subscribe',
-  channel: 'l2Book',
-  params: {
-    marketIndex: 0,
-    priceStep: 100
+  subscription: {
+    type: 'l2Book',
+    market: 0,
+    ps: 1000000  // scaled price step
+  }
+}));
+
+// Unsubscribe
+ws.send(JSON.stringify({
+  method: 'unsubscribe',
+  subscription: {
+    type: 'l2Book',
+    market: 0,
+    ps: 1000000
   }
 }));
 ```
@@ -75,34 +98,44 @@ ws.send(JSON.stringify({
   "channel": "l2Book",
   "data": {
     "market": 0,
-    "ps": 100,
+    "ps": 1000000,
     "bids": [
-      {"px": "50000.00", "sz": "1.5"}
+      { "px": "103.44", "sz": "125.5" },
+      { "px": "103.43", "sz": "250.0" }
     ],
     "asks": [
-      {"px": "50001.00", "sz": "1.2"}
+      { "px": "103.46", "sz": "100.0" },
+      { "px": "103.47", "sz": "200.0" }
     ]
   }
 }
 ```
 
-### Trade Stream
+---
 
-Subscribe to real-time trade updates.
+### Trades
 
+Subscribe to real-time trade events for a market.
+
+**SDK:**
 ```typescript
-// Using SDK
-ws.subscribe({
-  type: 'trades',
-  marketIndex: 0
-});
+const subscription = subscriptions.subscribeToTrades(
+  0,  // marketIndex
+  (trades) => {
+    trades.forEach(trade => {
+      console.log(`${trade.side === 'B' ? 'BUY' : 'SELL'} ${trade.sz} @ ${trade.px}`);
+    });
+  }
+);
+```
 
-// Raw message
+**Raw WebSocket:**
+```typescript
 ws.send(JSON.stringify({
   method: 'subscribe',
-  channel: 'trades',
-  params: {
-    marketIndex: 0
+  subscription: {
+    type: 'trades',
+    market: 0
   }
 }));
 ```
@@ -111,74 +144,40 @@ ws.send(JSON.stringify({
 ```json
 {
   "channel": "trades",
-  "data": {
-    "market": 0,
-    "px": "50000.00",
-    "sz": "1.5",
-    "side": "B",
-    "time": 1640000000000,
-    "oid": "order123",
-    "txId": "tx456"
-  }
+  "data": [
+    {
+      "market": 0,
+      "px": "103.45",
+      "sz": "10.5",
+      "side": "B",
+      "time": 1704067200000,
+      "oid": "123456789",
+      "txId": "5KQw..."
+    }
+  ]
 }
 ```
 
-### Candle Updates
+---
 
-Subscribe to real-time candle updates.
-
-```typescript
-// Using SDK
-ws.subscribe({
-  type: 'candles',
-  marketIndex: 0,
-  interval: '1m'
-});
-
-// Raw message
-ws.send(JSON.stringify({
-  method: 'subscribe',
-  channel: 'candles',
-  params: {
-    marketIndex: 0,
-    interval: '1m'
-  }
-}));
-```
-
-**Message Format:**
-```json
-{
-  "channel": "candles",
-  "data": {
-    "market": 0,
-    "t": 1640000000000,
-    "T": 1640000060000,
-    "o": "50000.00",
-    "c": "50100.00",
-    "h": "50200.00",
-    "l": "49900.00",
-    "bv": "123.45",
-    "qv": "6172500.00",
-    "n": 150
-  }
-}
-```
-
-### All Markets Mid Prices
+### All Mids (Price Updates)
 
 Subscribe to mid price updates for all markets.
 
+**SDK:**
 ```typescript
-// Using SDK
-ws.subscribe({
-  type: 'allMids'
+const subscription = subscriptions.subscribeToAllMids((mids) => {
+  console.log('SOL-USDC price:', mids['0']);
 });
+```
 
-// Raw message
+**Raw WebSocket:**
+```typescript
 ws.send(JSON.stringify({
   method: 'subscribe',
-  channel: 'allMids'
+  subscription: {
+    type: 'allMids'
+  }
 }));
 ```
 
@@ -187,154 +186,287 @@ ws.send(JSON.stringify({
 {
   "channel": "allMids",
   "data": {
-    "BTC-USDC": "50000.50",
-    "ETH-USDC": "3000.25",
-    "SOL-USDC": "100.50"
+    "0": "103.45",
+    "1": "0.00001234"
   }
 }
 ```
 
-## Unsubscribe
+---
 
+### Candles
+
+Subscribe to real-time candle updates.
+
+**SDK:**
 ```typescript
-// Using SDK
-ws.unsubscribe({
-  type: 'l2Book',
-  marketIndex: 0
-});
+import { api } from '@anthropic-ai/fibe-sdk';
 
-// Raw message
+const subscription = subscriptions.subscribeToCandle(
+  0,  // marketIndex
+  api.CandleInterval.Min1,  // interval
+  (candle) => {
+    console.log(`Open: ${candle.o}, Close: ${candle.c}, High: ${candle.h}, Low: ${candle.l}`);
+  }
+);
+```
+
+**Raw WebSocket:**
+```typescript
 ws.send(JSON.stringify({
-  method: 'unsubscribe',
-  channel: 'l2Book',
-  params: {
-    marketIndex: 0
+  method: 'subscribe',
+  subscription: {
+    type: 'candle',
+    market: 0,
+    interval: '1m'
   }
 }));
 ```
 
-## Event Handlers (SDK)
-
-```typescript
-import { FibeWebSocket } from '@fibe/ts-sdk';
-
-const ws = new FibeWebSocket();
-
-// Connection opened
-ws.on('open', () => {
-  console.log('WebSocket connected');
-});
-
-// Message received
-ws.on('message', (data) => {
-  console.log('Received:', data);
-});
-
-// Connection closed
-ws.on('close', () => {
-  console.log('WebSocket disconnected');
-});
-
-// Error occurred
-ws.on('error', (error) => {
-  console.error('WebSocket error:', error);
-});
-
-// Specific channel updates
-ws.on('l2Book', (data) => {
-  console.log('Orderbook update:', data);
-});
-
-ws.on('trades', (data) => {
-  console.log('New trade:', data);
-});
+**Message Format:**
+```json
+{
+  "channel": "candle",
+  "data": {
+    "market": 0,
+    "t": 1704067200000,
+    "T": 1704067259999,
+    "o": "103.00",
+    "h": "103.50",
+    "l": "102.80",
+    "c": "103.45",
+    "bv": "125.5",
+    "qv": "12984.67",
+    "n": 23
+  }
+}
 ```
+
+---
+
+### Order Updates
+
+Subscribe to real-time updates for a user's orders.
+
+**SDK:**
+```typescript
+const subscription = subscriptions.subscribeToOrderUpdates(
+  'user_wallet_address',
+  (data) => {
+    console.log(`User: ${data.user}`);
+    data.orders.forEach(order => {
+      console.log(`Order ${order.oid}: ${order.status}`);
+    });
+  }
+);
+```
+
+**Raw WebSocket:**
+```typescript
+ws.send(JSON.stringify({
+  method: 'subscribe',
+  subscription: {
+    type: 'orderUpdates',
+    user: 'user_wallet_address'
+  }
+}));
+```
+
+**Message Format:**
+```json
+{
+  "channel": "orderUpdates",
+  "data": {
+    "user": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+    "orders": [
+      {
+        "market": 0,
+        "oid": "1704067200000",
+        "type": "L",
+        "px": "100.00",
+        "side": "B",
+        "origSz": "10.0",
+        "sz": "5.0",
+        "status": "O",
+        "txId": "5KQw...",
+        "createdAt": 1704067200000,
+        "updatedAt": 1704067300000
+      }
+    ]
+  }
+}
+```
+
+---
 
 ## Connection Management
 
-### Auto Reconnect
+### Ping/Pong
 
-The SDK automatically reconnects if the connection is lost:
+The SDK automatically handles ping/pong to keep the connection alive. If using raw WebSocket:
 
 ```typescript
-const ws = new FibeWebSocket({
-  reconnect: true,
-  reconnectInterval: 5000, // ms
-  maxReconnectAttempts: 10
-});
+// Send ping every 15 seconds
+setInterval(() => {
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ method: 'ping' }));
+  }
+}, 15000);
+
+// Handle pong response
+ws.onmessage = (event) => {
+  const message = JSON.parse(event.data);
+  if (message.channel === 'pong') {
+    // Connection is alive
+  }
+};
 ```
 
-### Manual Connection Control
+### Auto Reconnection
+
+The SDK automatically reconnects on disconnection with exponential backoff:
+
+- Initial delay: 1 second
+- Max delay: 30 seconds
+- Max attempts: 5
+
+When using the SDK, subscriptions are automatically restored after reconnection.
+
+### Manual Reconnection (Raw WebSocket)
 
 ```typescript
-// Connect
-await ws.connect();
+function connect() {
+  const ws = new WebSocket('wss://api.fibe.com/ws');
 
-// Disconnect
-ws.disconnect();
+  ws.onclose = () => {
+    console.log('Disconnected, reconnecting...');
+    setTimeout(connect, 5000);
+  };
 
-// Check connection status
-if (ws.isConnected()) {
-  console.log('Connected');
+  ws.onopen = () => {
+    // Resubscribe to channels
+    ws.send(JSON.stringify({
+      method: 'subscribe',
+      subscription: { type: 'allMids' }
+    }));
+  };
+}
+
+connect();
+```
+
+---
+
+## Error Handling
+
+### Error Messages
+
+```json
+{
+  "channel": "error",
+  "detail": "Invalid subscription type"
 }
 ```
+
+### SDK Error Handling
+
+```typescript
+const subscriptions = await api.WebSocketSubscriptions.create(
+  'wss://api.fibe.com/ws',
+  (error) => {
+    console.error('WebSocket error:', error);
+    // Handle error (e.g., show notification, retry logic)
+  }
+);
+```
+
+---
 
 ## Complete Example
 
 ```typescript
-import { FibeWebSocket } from '@fibe/ts-sdk';
+import { api } from '@anthropic-ai/fibe-sdk';
 
-const ws = new FibeWebSocket({
-  url: 'wss://api.fibe.com/ws',
-  reconnect: true
-});
+async function main() {
+  // Create WebSocket subscriptions
+  const subscriptions = await api.WebSocketSubscriptions.create(
+    'wss://api.fibe.com/ws',
+    (error) => console.error('Error:', error)
+  );
 
-// Connection handlers
-ws.on('open', () => {
-  console.log('Connected to Fibe WebSocket');
+  // Track best prices
+  let bestBid = '0';
+  let bestAsk = '0';
 
-  // Subscribe to multiple channels
-  ws.subscribe({ type: 'l2Book', marketIndex: 0, priceStep: 100 });
-  ws.subscribe({ type: 'trades', marketIndex: 0 });
-  ws.subscribe({ type: 'allMids' });
-});
+  // Subscribe to orderbook
+  const orderbookSub = subscriptions.subscribeToL2Book(0, 0.01, (data) => {
+    if (data.bids.length > 0) bestBid = data.bids[0].px;
+    if (data.asks.length > 0) bestAsk = data.asks[0].px;
+    const spread = parseFloat(bestAsk) - parseFloat(bestBid);
+    console.log(`Bid: ${bestBid} | Ask: ${bestAsk} | Spread: ${spread.toFixed(4)}`);
+  });
 
-// Handle orderbook updates
-ws.on('l2Book', (data) => {
-  console.log('Best bid:', data.bids[0]);
-  console.log('Best ask:', data.asks[0]);
-});
+  // Subscribe to trades
+  const tradesSub = subscriptions.subscribeToTrades(0, (trades) => {
+    trades.forEach(trade => {
+      const side = trade.side === 'B' ? 'BUY ' : 'SELL';
+      console.log(`[TRADE] ${side} ${trade.sz} @ ${trade.px}`);
+    });
+  });
 
-// Handle trades
-ws.on('trades', (trade) => {
-  console.log(`Trade: ${trade.side === 'B' ? 'BUY' : 'SELL'} ${trade.sz} @ ${trade.px}`);
-});
+  // Subscribe to all mid prices
+  const midsSub = subscriptions.subscribeToAllMids((mids) => {
+    console.log('[MIDS]', mids);
+  });
 
-// Handle mid price updates
-ws.on('allMids', (mids) => {
-  console.log('BTC mid price:', mids['BTC-USDC']);
-});
+  // Run for 60 seconds then cleanup
+  setTimeout(() => {
+    console.log('Unsubscribing...');
+    orderbookSub.unsubscribe();
+    tradesSub.unsubscribe();
+    midsSub.unsubscribe();
+  }, 60000);
+}
 
-// Error handling
-ws.on('error', (error) => {
-  console.error('WebSocket error:', error);
-});
-
-// Connect
-await ws.connect();
+main().catch(console.error);
 ```
+
+---
 
 ## Rate Limits
 
-WebSocket connections are subject to the following limits:
-- Maximum 10 concurrent connections per IP
-- Maximum 100 subscriptions per connection
-- Messages are throttled to 1000/second per connection
+| Limit | Value |
+|-------|-------|
+| Connections per IP | 10 |
+| Subscriptions per connection | 100 |
+| Messages per second | 1000 |
+
+---
 
 ## Best Practices
 
-1. **Subscribe to only what you need** - Each subscription consumes resources
-2. **Handle reconnections gracefully** - Use the SDK's built-in reconnect feature
-3. **Process messages asynchronously** - Don't block the message handler
-4. **Implement exponential backoff** - For reconnection attempts
-5. **Validate message data** - Always check message structure before processing
+1. **Subscribe only to what you need** - Each subscription consumes server resources
+
+2. **Handle disconnections gracefully** - Use the SDK's built-in reconnection or implement your own
+
+3. **Process messages asynchronously** - Don't block the message handler with heavy computation
+
+4. **Validate message data** - Always check message structure before processing
+
+5. **Use the SDK** - It handles reconnection, ping/pong, and subscription management automatically
+
+6. **Implement exponential backoff** - When manually handling reconnection
+
+```typescript
+let reconnectAttempt = 0;
+
+function getReconnectDelay() {
+  const delay = Math.min(1000 * Math.pow(2, reconnectAttempt), 30000);
+  reconnectAttempt++;
+  return delay;
+}
+
+function onConnected() {
+  reconnectAttempt = 0;  // Reset on successful connection
+}
+```

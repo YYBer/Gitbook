@@ -1,374 +1,552 @@
 # Code Examples
 
-This page provides practical examples for common use cases with the Fibe API.
+Practical examples for common use cases with the Fibe SDK.
 
-## Basic Market Data
+## Setup
 
-### Get All Markets and Display Info
+All examples assume the following setup:
 
 ```typescript
-import { FibeAPI } from '@fibe/ts-sdk';
+import { api, exchange } from '@anthropic-ai/fibe-sdk';
+import { Connection, Keypair } from '@solana/web3.js';
 
-const api = new FibeAPI();
+// API client for market data
+const apiClient = api.createApiClient('https://api.fibe.com');
 
-async function displayMarkets() {
-  try {
-    const markets = await api.getMarkets();
+// Connection to Solana
+const connection = new Connection('https://api.mainnet-beta.solana.com');
 
-    console.log('Available Markets:\n');
-    markets.forEach((market, index) => {
-      console.log(`${index + 1}. ${market.market}`);
-      console.log(`   Market Index: ${market.marketIndex}`);
-      console.log(`   Base: ${market.baseMint.slice(0, 8)}...`);
-      console.log(`   Quote: ${market.quoteMint.slice(0, 8)}...`);
-      console.log('');
-    });
-  } catch (error) {
-    console.error('Error fetching markets:', error);
+// Exchange client for trading
+const exchangeClient = new exchange.ExchangeClient(
+  connection,
+  'confirmed',
+  apiClient
+);
+
+// Wallet setup (use your own method to load keys)
+const keypair = Keypair.fromSecretKey(/* your secret key */);
+const wallet = {
+  publicKey: keypair.publicKey,
+  signTransaction: async (tx) => {
+    tx.sign([keypair]);
+    return tx;
   }
+};
+```
+
+---
+
+## Market Data
+
+### Get All Markets
+
+```typescript
+async function listMarkets() {
+  const markets = await apiClient.getMarkets();
+
+  console.log('Available Markets:\n');
+  markets.forEach((market) => {
+    console.log(`${market.market}`);
+    console.log(`  Index: ${market.marketIndex}`);
+    console.log(`  Base: ${market.baseMint}`);
+    console.log(`  Quote: ${market.quoteMint}`);
+    console.log(`  Tick Size: ${market.tickSizeInQuoteBaseUnits}`);
+    console.log(`  Lot Size: ${market.lotSizeInBaseBaseUnits}`);
+    console.log('');
+  });
 }
 
-displayMarkets();
+listMarkets();
 ```
 
 ### Get Current Prices
 
 ```typescript
-import { FibeAPI } from '@fibe/ts-sdk';
-
-const api = new FibeAPI();
-
 async function getCurrentPrices() {
-  const mids = await api.getAllMids();
+  const mids = await apiClient.getAllMids();
+  const markets = await apiClient.getMarkets();
 
-  console.log('Current Market Prices:\n');
-  Object.entries(mids).forEach(([market, price]) => {
-    console.log(`${market}: $${price}`);
+  console.log('Current Prices:\n');
+  markets.forEach((market) => {
+    const price = mids[market.marketIndex.toString()];
+    if (price) {
+      console.log(`${market.market}: $${price}`);
+    }
   });
 }
 
 getCurrentPrices();
 ```
 
-### Get Market Statistics with 24h Change
+### Get 24h Market Stats
 
 ```typescript
-import { FibeAPI } from '@fibe/ts-sdk';
-
-const api = new FibeAPI();
-
 async function getMarketStats(marketIndex: number) {
-  const stats = await api.getMarketStats({ marketIndex });
+  const market = await apiClient.getMarket({ marketIndex });
+  const stats = await apiClient.getMarketStats({ marketIndex });
+
+  console.log(`\n${market.market} - 24h Stats`);
+  console.log('─'.repeat(30));
 
   if (stats.px && stats.px24hAgo) {
-    const currentPrice = parseFloat(stats.px);
-    const price24hAgo = parseFloat(stats.px24hAgo);
-    const change = ((currentPrice - price24hAgo) / price24hAgo) * 100;
+    const current = parseFloat(stats.px);
+    const dayAgo = parseFloat(stats.px24hAgo);
+    const change = ((current - dayAgo) / dayAgo) * 100;
 
-    console.log('Market Statistics:');
-    console.log(`Current Price: $${currentPrice}`);
-    console.log(`24h Change: ${change.toFixed(2)}%`);
-    console.log(`24h Volume (Base): ${stats.bv24h}`);
-    console.log(`24h Volume (Quote): $${stats.qv24h}`);
+    console.log(`Current Price: $${current.toFixed(4)}`);
+    console.log(`24h Change: ${change >= 0 ? '+' : ''}${change.toFixed(2)}%`);
   }
+
+  console.log(`24h Base Volume: ${stats.bv24h}`);
+  console.log(`24h Quote Volume: $${parseFloat(stats.qv24h).toLocaleString()}`);
 }
 
 getMarketStats(0);
 ```
 
+---
+
 ## Orderbook Analysis
 
-### Get Best Bid and Ask
+### Get Best Bid/Ask and Spread
 
 ```typescript
-import { FibeAPI } from '@fibe/ts-sdk';
-
-const api = new FibeAPI();
-
-async function getBestPrices(marketIndex: number) {
-  const orderbook = await api.getL2Book({
+async function getSpread(marketIndex: number) {
+  const orderbook = await apiClient.getL2Book({
     marketIndex,
-    priceStep: 100
+    priceStep: 0.01
   });
 
-  if (orderbook.length > 0) {
-    const book = orderbook[0];
-    const bestBid = book.bids[0];
-    const bestAsk = book.asks[0];
-
-    console.log('Best Prices:');
-    console.log(`Bid: $${bestBid.px} (Size: ${bestBid.sz})`);
-    console.log(`Ask: $${bestAsk.px} (Size: ${bestAsk.sz})`);
-
-    const spread = parseFloat(bestAsk.px) - parseFloat(bestBid.px);
-    const spreadPercent = (spread / parseFloat(bestBid.px)) * 100;
-
-    console.log(`Spread: $${spread.toFixed(2)} (${spreadPercent.toFixed(4)}%)`);
+  if (orderbook.length === 0) {
+    console.log('No orderbook data');
+    return;
   }
+
+  const book = orderbook[0];
+  const bestBid = book.bids[0];
+  const bestAsk = book.asks[0];
+
+  if (!bestBid || !bestAsk) {
+    console.log('Orderbook is empty');
+    return;
+  }
+
+  const bidPrice = parseFloat(bestBid.px);
+  const askPrice = parseFloat(bestAsk.px);
+  const spread = askPrice - bidPrice;
+  const spreadPercent = (spread / bidPrice) * 100;
+
+  console.log(`Best Bid: $${bidPrice.toFixed(4)} (${bestBid.sz} size)`);
+  console.log(`Best Ask: $${askPrice.toFixed(4)} (${bestAsk.sz} size)`);
+  console.log(`Spread: $${spread.toFixed(4)} (${spreadPercent.toFixed(4)}%)`);
 }
 
-getBestPrices(0);
+getSpread(0);
 ```
 
 ### Calculate Orderbook Depth
 
 ```typescript
-import { FibeAPI } from '@fibe/ts-sdk';
-
-const api = new FibeAPI();
-
 async function calculateDepth(marketIndex: number, levels: number = 10) {
-  const orderbook = await api.getL2Book({
+  const orderbook = await apiClient.getL2Book({
     marketIndex,
-    priceStep: 100
+    priceStep: 0.01
   });
 
-  if (orderbook.length > 0) {
-    const book = orderbook[0];
+  if (orderbook.length === 0) return;
 
-    const bidDepth = book.bids
-      .slice(0, levels)
-      .reduce((sum, level) => sum + parseFloat(level.sz), 0);
+  const book = orderbook[0];
 
-    const askDepth = book.asks
-      .slice(0, levels)
-      .reduce((sum, level) => sum + parseFloat(level.sz), 0);
+  // Calculate bid depth
+  const bidDepth = book.bids
+    .slice(0, levels)
+    .reduce((sum, level) => sum + parseFloat(level.sz), 0);
 
-    console.log(`Orderbook Depth (Top ${levels} levels):`);
-    console.log(`Bid Side: ${bidDepth.toFixed(4)}`);
-    console.log(`Ask Side: ${askDepth.toFixed(4)}`);
-    console.log(`Total: ${(bidDepth + askDepth).toFixed(4)}`);
-  }
+  // Calculate ask depth
+  const askDepth = book.asks
+    .slice(0, levels)
+    .reduce((sum, level) => sum + parseFloat(level.sz), 0);
+
+  console.log(`\nOrderbook Depth (Top ${levels} levels)`);
+  console.log('─'.repeat(30));
+  console.log(`Bid Depth: ${bidDepth.toFixed(4)}`);
+  console.log(`Ask Depth: ${askDepth.toFixed(4)}`);
+  console.log(`Ratio (Bid/Ask): ${(bidDepth / askDepth).toFixed(2)}`);
 }
 
 calculateDepth(0, 10);
 ```
+
+---
 
 ## Historical Data
 
 ### Get and Analyze Candles
 
 ```typescript
-import { FibeAPI } from '@fibe/ts-sdk';
-
-const api = new FibeAPI();
-
-async function analyzeCandleData(marketIndex: number) {
+async function analyzeCandles(marketIndex: number, hours: number = 24) {
   const endTime = Date.now();
-  const startTime = endTime - 24 * 60 * 60 * 1000; // 24 hours ago
+  const startTime = endTime - hours * 60 * 60 * 1000;
 
-  const candles = await api.getCandles({
+  const candles = await apiClient.getCandles({
     marketIndex,
     startTimestamp: startTime,
     endTimestamp: endTime,
-    interval: '1h'
+    interval: api.CandleInterval.Hour1
   });
 
-  if (candles.length > 0) {
-    const prices = candles.map(c => parseFloat(c.c));
-    const high = Math.max(...prices);
-    const low = Math.min(...prices);
-    const first = parseFloat(candles[0].o);
-    const last = parseFloat(candles[candles.length - 1].c);
-    const change = ((last - first) / first) * 100;
-
-    console.log('24h Analysis:');
-    console.log(`High: $${high.toFixed(2)}`);
-    console.log(`Low: $${low.toFixed(2)}`);
-    console.log(`Open: $${first.toFixed(2)}`);
-    console.log(`Close: $${last.toFixed(2)}`);
-    console.log(`Change: ${change.toFixed(2)}%`);
+  if (candles.length === 0) {
+    console.log('No candle data');
+    return;
   }
+
+  const closes = candles.map(c => parseFloat(c.c));
+  const highs = candles.map(c => parseFloat(c.h));
+  const lows = candles.map(c => parseFloat(c.l));
+  const volumes = candles.map(c => parseFloat(c.bv));
+
+  const high = Math.max(...highs);
+  const low = Math.min(...lows);
+  const open = parseFloat(candles[0].o);
+  const close = parseFloat(candles[candles.length - 1].c);
+  const totalVolume = volumes.reduce((a, b) => a + b, 0);
+  const change = ((close - open) / open) * 100;
+
+  console.log(`\n${hours}h Analysis`);
+  console.log('─'.repeat(30));
+  console.log(`Open: $${open.toFixed(4)}`);
+  console.log(`High: $${high.toFixed(4)}`);
+  console.log(`Low: $${low.toFixed(4)}`);
+  console.log(`Close: $${close.toFixed(4)}`);
+  console.log(`Change: ${change >= 0 ? '+' : ''}${change.toFixed(2)}%`);
+  console.log(`Volume: ${totalVolume.toFixed(2)}`);
 }
 
-analyzeCandleData(0);
+analyzeCandles(0, 24);
 ```
 
-### Calculate Simple Moving Average
+### Simple Moving Average
 
 ```typescript
-import { FibeAPI } from '@fibe/ts-sdk';
-
-const api = new FibeAPI();
-
 async function calculateSMA(marketIndex: number, period: number = 20) {
   const endTime = Date.now();
-  const startTime = endTime - period * 60 * 60 * 1000; // hours ago
+  const startTime = endTime - (period + 5) * 60 * 60 * 1000;
 
-  const candles = await api.getCandles({
+  const candles = await apiClient.getCandles({
     marketIndex,
     startTimestamp: startTime,
     endTimestamp: endTime,
-    interval: '1h'
+    interval: api.CandleInterval.Hour1
   });
 
-  if (candles.length >= period) {
-    const prices = candles.slice(-period).map(c => parseFloat(c.c));
-    const sma = prices.reduce((sum, price) => sum + price, 0) / period;
-
-    console.log(`${period}-hour SMA: $${sma.toFixed(2)}`);
+  if (candles.length < period) {
+    console.log(`Not enough data for ${period}-period SMA`);
+    return;
   }
+
+  const closes = candles.slice(-period).map(c => parseFloat(c.c));
+  const sma = closes.reduce((a, b) => a + b, 0) / period;
+  const currentPrice = closes[closes.length - 1];
+  const position = currentPrice > sma ? 'above' : 'below';
+
+  console.log(`\n${period}-Period SMA Analysis`);
+  console.log('─'.repeat(30));
+  console.log(`SMA(${period}): $${sma.toFixed(4)}`);
+  console.log(`Current: $${currentPrice.toFixed(4)}`);
+  console.log(`Price is ${position} SMA`);
 }
 
 calculateSMA(0, 20);
 ```
 
-## Real-time Data with WebSocket
+---
 
-### Monitor Orderbook Updates
+## Trading
 
-```typescript
-import { FibeWebSocket } from '@fibe/ts-sdk';
-
-const ws = new FibeWebSocket();
-
-ws.on('open', () => {
-  console.log('Connected to WebSocket');
-  ws.subscribe({ type: 'l2Book', marketIndex: 0, priceStep: 100 });
-});
-
-ws.on('l2Book', (data) => {
-  const bestBid = data.bids[0];
-  const bestAsk = data.asks[0];
-  const spread = parseFloat(bestAsk.px) - parseFloat(bestBid.px);
-
-  console.log(`Bid: $${bestBid.px} | Ask: $${bestAsk.px} | Spread: $${spread.toFixed(2)}`);
-});
-
-ws.connect();
-```
-
-### Track Trade Volume
+### Place Limit Buy Order
 
 ```typescript
-import { FibeWebSocket } from '@fibe/ts-sdk';
+async function placeLimitBuy(
+  marketIndex: number,
+  price: string,
+  quantity: string
+) {
+  const orderId = BigInt(Date.now());
 
-const ws = new FibeWebSocket();
-let totalVolume = 0;
+  console.log(`Placing limit buy: ${quantity} @ $${price}`);
 
-ws.on('open', () => {
-  console.log('Tracking trade volume...');
-  ws.subscribe({ type: 'trades', marketIndex: 0 });
-});
+  const tx = await exchangeClient.placeLimitOrder({
+    owner: wallet.publicKey,
+    marketIndex,
+    price,
+    orderId,
+    side: exchange.Side.Bid,
+    baseQuantity: quantity,
+  });
 
-ws.on('trades', (trade) => {
-  const volume = parseFloat(trade.sz);
-  totalVolume += volume;
+  await exchangeClient.sendAndConfirmTx(tx, wallet);
+  console.log(`Order placed! ID: ${orderId}`);
 
-  console.log(`New trade: ${trade.side === 'B' ? 'BUY' : 'SELL'} ${trade.sz} @ $${trade.px}`);
-  console.log(`Total volume tracked: ${totalVolume.toFixed(4)}`);
-});
+  return orderId;
+}
 
-ws.connect();
+// Example: Buy 0.1 SOL at $100
+placeLimitBuy(0, '100.00', '0.1');
 ```
+
+### Place Market Buy Order
+
+```typescript
+async function placeMarketBuy(marketIndex: number, quantity: string) {
+  const orderId = BigInt(Date.now());
+
+  console.log(`Placing market buy: ${quantity}`);
+
+  const tx = await exchangeClient.placeMarketOrder({
+    owner: wallet.publicKey,
+    marketIndex,
+    orderId,
+    side: exchange.Side.Bid,
+    baseQuantity: quantity,
+    slippage: 0.01,  // 1% slippage tolerance
+  });
+
+  await exchangeClient.sendAndConfirmTx(tx, wallet);
+  console.log(`Market order executed! ID: ${orderId}`);
+}
+
+placeMarketBuy(0, '0.1');
+```
+
+### Cancel Order
+
+```typescript
+async function cancelOrder(marketIndex: number, orderId: bigint) {
+  console.log(`Cancelling order: ${orderId}`);
+
+  const tx = await exchangeClient.cancelOrder({
+    signer: wallet.publicKey,
+    marketIndex,
+    orderId,
+  });
+
+  await exchangeClient.sendAndConfirmTx(tx, wallet);
+  console.log('Order cancelled!');
+}
+
+cancelOrder(0, BigInt('1704067200000'));
+```
+
+### Cancel All Orders
+
+```typescript
+async function cancelAllOrders(marketIndex: number) {
+  const orders = await apiClient.getOpenOrders({
+    user: wallet.publicKey.toBase58()
+  });
+
+  const marketOrders = orders.filter(o => o.market === marketIndex);
+
+  console.log(`Cancelling ${marketOrders.length} orders...`);
+
+  for (const order of marketOrders) {
+    const tx = await exchangeClient.cancelOrder({
+      signer: wallet.publicKey,
+      marketIndex,
+      orderId: BigInt(order.oid),
+    });
+    await exchangeClient.sendAndConfirmTx(tx, wallet);
+    console.log(`Cancelled: ${order.oid}`);
+  }
+
+  console.log('All orders cancelled!');
+}
+
+cancelAllOrders(0);
+```
+
+---
+
+## Real-time Data
 
 ### Price Alert System
 
 ```typescript
-import { FibeWebSocket } from '@fibe/ts-sdk';
+async function priceAlert(marketIndex: number, targetPrice: number, above: boolean) {
+  const subscriptions = await api.WebSocketSubscriptions.create(
+    'wss://api.fibe.com/ws'
+  );
 
-const ws = new FibeWebSocket();
-const alertPrice = 50000; // Set your alert price
+  console.log(`Watching for price ${above ? 'above' : 'below'} $${targetPrice}...`);
 
-ws.on('open', () => {
-  console.log('Price alert system active');
-  ws.subscribe({ type: 'allMids' });
-});
+  const subscription = subscriptions.subscribeToAllMids((mids) => {
+    const price = parseFloat(mids[marketIndex.toString()]);
 
-ws.on('allMids', (mids) => {
-  const btcPrice = parseFloat(mids['BTC-USDC']);
-
-  if (btcPrice >= alertPrice) {
-    console.log(`🚨 ALERT: BTC reached $${btcPrice}!`);
-    // Send notification, email, etc.
-  }
-});
-
-ws.connect();
-```
-
-## Account Data
-
-### Get User Orders
-
-```typescript
-import { FibeAPI } from '@fibe/ts-sdk';
-
-const api = new FibeAPI();
-const userAddress = 'your_wallet_address';
-
-async function getUserOrders() {
-  // Get open orders
-  const openOrders = await api.getOpenOrders({ user: userAddress });
-  console.log(`Open Orders: ${openOrders.length}`);
-
-  openOrders.forEach((order) => {
-    console.log(`- ${order.side === 'B' ? 'BUY' : 'SELL'} ${order.sz} @ $${order.px}`);
+    if ((above && price >= targetPrice) || (!above && price <= targetPrice)) {
+      console.log(`\nALERT! Price hit $${price}`);
+      subscription.unsubscribe();
+    }
   });
-
-  // Get order history
-  const history = await api.getHistoricalOrders({
-    user: userAddress,
-    page: 0,
-    pageSize: 10
-  });
-  console.log(`\nRecent Orders: ${history.length}`);
 }
 
-getUserOrders();
+// Alert when SOL goes above $110
+priceAlert(0, 110, true);
 ```
 
-## Advanced: Multi-Market Monitor
+### Trade Volume Tracker
 
 ```typescript
-import { FibeAPI, FibeWebSocket } from '@fibe/ts-sdk';
+async function trackVolume(marketIndex: number, durationMs: number = 60000) {
+  const subscriptions = await api.WebSocketSubscriptions.create(
+    'wss://api.fibe.com/ws'
+  );
 
-const api = new FibeAPI();
-const ws = new FibeWebSocket();
+  let buyVolume = 0;
+  let sellVolume = 0;
+  let tradeCount = 0;
 
-async function monitorMultipleMarkets() {
-  // Get all markets
-  const markets = await api.getMarkets();
+  console.log('Tracking trade volume...\n');
 
-  ws.on('open', () => {
-    console.log('Monitoring all markets...\n');
+  const subscription = subscriptions.subscribeToTrades(marketIndex, (trades) => {
+    trades.forEach(trade => {
+      const size = parseFloat(trade.sz);
+      if (trade.side === 'B') {
+        buyVolume += size;
+      } else {
+        sellVolume += size;
+      }
+      tradeCount++;
 
-    // Subscribe to all markets
-    markets.forEach((market) => {
-      ws.subscribe({
-        type: 'trades',
-        marketIndex: market.marketIndex
-      });
+      console.log(
+        `${trade.side === 'B' ? 'BUY ' : 'SELL'} ${trade.sz.padStart(10)} @ $${trade.px}`
+      );
     });
   });
 
-  ws.on('trades', async (trade) => {
-    const market = markets.find(m => m.marketIndex === trade.market);
-    console.log(`[${market?.market}] ${trade.side === 'B' ? 'BUY' : 'SELL'} ${trade.sz} @ $${trade.px}`);
-  });
-
-  await ws.connect();
+  // Stop after duration
+  setTimeout(() => {
+    subscription.unsubscribe();
+    console.log('\n' + '─'.repeat(40));
+    console.log(`Total Trades: ${tradeCount}`);
+    console.log(`Buy Volume: ${buyVolume.toFixed(4)}`);
+    console.log(`Sell Volume: ${sellVolume.toFixed(4)}`);
+    console.log(`Net: ${(buyVolume - sellVolume).toFixed(4)}`);
+  }, durationMs);
 }
 
-monitorMultipleMarkets();
+trackVolume(0, 60000);  // Track for 1 minute
 ```
+
+### Order Book Imbalance Monitor
+
+```typescript
+async function monitorImbalance(marketIndex: number) {
+  const subscriptions = await api.WebSocketSubscriptions.create(
+    'wss://api.fibe.com/ws'
+  );
+
+  const subscription = subscriptions.subscribeToL2Book(
+    marketIndex,
+    0.1,
+    (book) => {
+      // Calculate top 5 level depth
+      const bidDepth = book.bids.slice(0, 5)
+        .reduce((sum, l) => sum + parseFloat(l.sz), 0);
+      const askDepth = book.asks.slice(0, 5)
+        .reduce((sum, l) => sum + parseFloat(l.sz), 0);
+
+      const imbalance = (bidDepth - askDepth) / (bidDepth + askDepth);
+      const bar = '█'.repeat(Math.abs(Math.round(imbalance * 20)));
+
+      if (imbalance > 0) {
+        console.log(`BID  [${bar.padEnd(20)}] ${(imbalance * 100).toFixed(1)}%`);
+      } else {
+        console.log(`ASK  [${''.padStart(20 - bar.length)}${bar}] ${(imbalance * 100).toFixed(1)}%`);
+      }
+    }
+  );
+
+  // Run for 30 seconds
+  setTimeout(() => subscription.unsubscribe(), 30000);
+}
+
+monitorImbalance(0);
+```
+
+---
+
+## Account Management
+
+### View Open Orders
+
+```typescript
+async function viewOpenOrders() {
+  const orders = await apiClient.getOpenOrders({
+    user: wallet.publicKey.toBase58()
+  });
+
+  if (orders.length === 0) {
+    console.log('No open orders');
+    return;
+  }
+
+  console.log(`\nOpen Orders (${orders.length})`);
+  console.log('─'.repeat(60));
+
+  orders.forEach(order => {
+    const side = order.side === 'B' ? 'BUY ' : 'SELL';
+    const filled = parseFloat(order.origSz) - parseFloat(order.sz);
+    const fillPercent = (filled / parseFloat(order.origSz) * 100).toFixed(0);
+
+    console.log(
+      `${side} ${order.sz}/${order.origSz} (${fillPercent}%) @ $${order.px} | Market: ${order.market}`
+    );
+  });
+}
+
+viewOpenOrders();
+```
+
+### Order History
+
+```typescript
+async function viewOrderHistory(page: number = 0) {
+  const orders = await apiClient.getHistoricalOrders({
+    user: wallet.publicKey.toBase58(),
+    page,
+    pageSize: 20
+  });
+
+  console.log(`\nOrder History (Page ${page + 1})`);
+  console.log('─'.repeat(60));
+
+  orders.forEach(order => {
+    const side = order.side === 'B' ? 'BUY ' : 'SELL';
+    const status = order.status === 'F' ? 'FILLED' :
+                   order.status === 'C' ? 'CANCELLED' : 'OPEN';
+    const date = new Date(order.createdAt).toLocaleString();
+
+    console.log(`${date} | ${side} ${order.origSz} @ $${order.px} | ${status}`);
+  });
+}
+
+viewOrderHistory(0);
+```
+
+---
 
 ## Error Handling Pattern
 
 ```typescript
-import { FibeAPI } from '@fibe/ts-sdk';
-
-const api = new FibeAPI();
-
-async function robustAPICall<T>(
-  apiCall: () => Promise<T>,
-  retries = 3
+async function safeApiCall<T>(
+  fn: () => Promise<T>,
+  retries: number = 3
 ): Promise<T | null> {
   for (let i = 0; i < retries; i++) {
     try {
-      return await apiCall();
+      return await fn();
     } catch (error) {
-      console.error(`Attempt ${i + 1} failed:`, error);
+      console.error(`Attempt ${i + 1} failed:`, error.message);
 
       if (i === retries - 1) {
         console.error('All retries exhausted');
@@ -376,25 +554,28 @@ async function robustAPICall<T>(
       }
 
       // Exponential backoff
-      await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, i)));
+      const delay = 1000 * Math.pow(2, i);
+      await new Promise(r => setTimeout(r, delay));
     }
   }
   return null;
 }
 
 // Usage
-async function example() {
-  const markets = await robustAPICall(() => api.getMarkets());
+async function robustMarketData() {
+  const markets = await safeApiCall(() => apiClient.getMarkets());
   if (markets) {
-    console.log('Successfully fetched markets:', markets.length);
+    console.log(`Found ${markets.length} markets`);
   }
 }
 
-example();
+robustMarketData();
 ```
+
+---
 
 ## Next Steps
 
-- Explore the [API Reference](api-reference.md) for complete endpoint documentation
-- Check out the [TypeScript SDK](typescript-sdk.md) guide for more SDK features
-- Learn about [WebSocket API](websocket.md) for real-time data streaming
+- [API Reference](api-reference.md) - Complete endpoint documentation
+- [TypeScript SDK](typescript-sdk.md) - Full SDK reference
+- [WebSocket API](websocket.md) - Real-time streaming guide

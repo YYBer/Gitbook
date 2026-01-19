@@ -1,82 +1,150 @@
 # API Overview
 
-Welcome to the Fibe API documentation. Our API allows developers to integrate with Fibe's trading platform programmatically.
+Welcome to the Fibe API documentation. The Fibe API allows developers to programmatically access market data and execute trades on the Fibe decentralized exchange built on Solana.
 
-## Base URL
+## Base URLs
+
+| Environment | REST API | WebSocket |
+|-------------|----------|-----------|
+| **Mainnet** | `https://api.fibe.com` | `wss://api.fibe.com/ws` |
+| **Testnet** | `https://api.fibe-testnet.com` | `wss://api.fibe-testnet.com/ws` |
+
+## Architecture Overview
+
+The Fibe API consists of two main components:
+
+### 1. Info API (REST)
+Read-only endpoints for retrieving market data, orderbooks, candles, and user orders. These are standard HTTP GET requests that don't require authentication.
+
+### 2. Exchange Client (On-chain)
+Trading operations (place, cancel, modify orders) are executed directly on the Solana blockchain through the Fibe smart contract. These require a Solana wallet for signing transactions.
 
 ```
-https://api.fibe.com/v1
+┌─────────────────────────────────────────────────────────────┐
+│                        Your Application                      │
+└─────────────────────────────────────────────────────────────┘
+                │                           │
+                ▼                           ▼
+┌─────────────────────────┐   ┌─────────────────────────────┐
+│      Info API (REST)    │   │    Exchange Client (Solana)  │
+│  - Market Data          │   │  - Place Orders              │
+│  - Orderbook            │   │  - Cancel Orders             │
+│  - Candles              │   │  - Modify Orders             │
+│  - User Orders          │   │  - Requires Wallet Signature │
+└─────────────────────────┘   └─────────────────────────────┘
 ```
-
-## API Endpoints
-
-Our API is organized around REST principles and returns JSON responses. All endpoints are documented using OpenAPI 3.1 specification.
-
-### Available Endpoints
-
-- **Market Data** - Get real-time market information, orderbook, and trading data
-- **Trading** - Place and manage orders
-- **Account** - Query account information and order history
 
 ## Quick Start
 
-### 1. Install the TypeScript SDK
+### Installation
 
 ```bash
-npm install @fibe/ts-sdk
+npm install @anthropic-ai/fibe-sdk
+# or
+yarn add @anthropic-ai/fibe-sdk
 ```
 
-### 2. Initialize the Client
+### Basic Usage
 
 ```typescript
-import { FibeAPI } from '@fibe/ts-sdk';
+import { api, exchange } from '@anthropic-ai/fibe-sdk';
+import { Connection } from '@solana/web3.js';
 
-const api = new FibeAPI();
-```
+// 1. Create API client for market data
+const apiClient = api.createApiClient('https://api.fibe.com');
 
-### 3. Make Your First Request
-
-```typescript
 // Get all markets
-const markets = await api.getMarkets();
+const markets = await apiClient.getMarkets();
 console.log(markets);
 
 // Get mid prices
-const mids = await api.getAllMids();
+const mids = await apiClient.getAllMids();
 console.log(mids);
+
+// 2. Create Exchange client for trading
+const connection = new Connection('https://api.mainnet-beta.solana.com');
+const exchangeClient = new exchange.ExchangeClient(
+  connection,
+  'confirmed',
+  apiClient
+);
 ```
 
-## Interactive API Reference
+## Key Concepts
 
-For a complete interactive API reference where you can test endpoints directly in your browser, see the [API Reference](api-reference.md) page.
+### Market Index
+
+Each trading pair on Fibe is identified by a unique `marketIndex` (integer). Use the `/api/v1/markets` endpoint to get the list of all markets and their indices.
+
+```typescript
+const markets = await apiClient.getMarkets();
+// [{ market: "SOL-USDC", marketIndex: 0, ... }, ...]
+```
+
+### Tick Size and Lot Size
+
+- **Tick Size** (`tickSizeInQuoteBaseUnits`): The minimum price increment for orders
+- **Lot Size** (`lotSizeInBaseBaseUnits`): The minimum quantity increment for orders
+
+All order prices and quantities must be multiples of these values.
+
+### Order ID
+
+Orders are identified by a unique `orderId` (bigint). When placing orders, you must generate a unique order ID. A common pattern is to use the current timestamp:
+
+```typescript
+const orderId = BigInt(Date.now());
+```
+
+### Side
+
+- `Side.Bid` (`"B"`) - Buy order
+- `Side.Ask` (`"A"`) - Sell order
+
+### Time in Force
+
+- `TimeInForce.Gtc` - Good Till Cancelled (default for limit orders)
+- `TimeInForce.Ioc` - Immediate Or Cancel (market orders)
+- `TimeInForce.PostOnly` - Only add liquidity, cancel if would match
+- `TimeInForce.Fok` - Fill Or Kill
 
 ## Response Format
 
-All API responses follow a consistent format:
-
 ### Success Response
+
+All successful API responses return the data directly:
+
 ```json
 {
-  "data": { ... }
+  "market": "SOL-USDC",
+  "marketIndex": 0,
+  "baseMint": "So11111111111111111111111111111111111111112",
+  "quoteMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 }
 ```
 
 ### Error Response
+
+Error responses include an `error` field:
+
 ```json
 {
-  "error": "Error message"
+  "error": "Market not found"
 }
 ```
 
 ## Rate Limits
 
-API rate limits are applied per IP address. Current limits:
-- Public endpoints: 100 requests per minute
-- Authenticated endpoints: 200 requests per minute
+| Endpoint Type | Rate Limit |
+|---------------|------------|
+| Public endpoints | 100 requests/minute per IP |
+| WebSocket connections | 10 concurrent per IP |
+| WebSocket subscriptions | 100 per connection |
 
-## Support
+## Next Steps
 
-If you have questions or need help:
-- Check our [GitHub Repository](https://github.com/fibe-io/ts-sdk)
-- Join our [Discord Community](#)
-- Email us at api@fibe.com
+- [Info API Reference](api-reference.md) - Complete REST API documentation
+- [Exchange API](exchange-api.md) - Trading operations documentation
+- [TypeScript SDK](typescript-sdk.md) - Full SDK guide
+- [WebSocket API](websocket.md) - Real-time data streaming
+- [Examples](examples.md) - Code examples for common use cases
