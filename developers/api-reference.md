@@ -447,7 +447,7 @@ All errors return a JSON object with an `error` field:
 Using the TypeScript SDK:
 
 ```typescript
-import { api } from '@anthropic-ai/fibe-sdk';
+import { api } from '<package-name>';
 
 const client = api.createApiClient('https://api.fibe.com');
 

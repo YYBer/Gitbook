@@ -14,7 +14,7 @@ The Fibe WebSocket API provides real-time streaming data for market updates, ord
 ### Using the SDK (Recommended)
 
 ```typescript
-import { api } from '@anthropic-ai/fibe-sdk';
+import { api } from '<package-name>';
 
 const subscriptions = await api.WebSocketSubscriptions.create(
   'wss://api.fibe.com/ws',
@@ -200,7 +200,7 @@ Subscribe to real-time candle updates.
 
 **SDK:**
 ```typescript
-import { api } from '@anthropic-ai/fibe-sdk';
+import { api } from '<package-name>';
 
 const subscription = subscriptions.subscribeToCandle(
   0,  // marketIndex
@@ -385,7 +385,7 @@ const subscriptions = await api.WebSocketSubscriptions.create(
 ## Complete Example
 
 ```typescript
-import { api } from '@anthropic-ai/fibe-sdk';
+import { api } from '<package-name>';
 
 async function main() {
   // Create WebSocket subscriptions
@@ -435,11 +435,13 @@ main().catch(console.error);
 
 ## Rate Limits
 
-| Limit | Value |
-|-------|-------|
-| Connections per IP | 10 |
-| Subscriptions per connection | 100 |
-| Messages per second | 1000 |
+| Resource | Limit |
+|----------|-------|
+| WebSocket connections | 100 per IP |
+| WebSocket subscriptions | 1000 per IP |
+| Messages sent to server | 2000 per minute (across all connections) |
+| Inflight POST messages | 100 simultaneous |
+| User-specific subscriptions | 10 unique users |
 
 ---
 

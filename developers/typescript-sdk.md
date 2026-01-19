@@ -5,9 +5,9 @@ The official Fibe TypeScript SDK provides a complete interface for interacting w
 ## Installation
 
 ```bash
-npm install @anthropic-ai/fibe-sdk
+npm install <package-name>
 # or
-yarn add @anthropic-ai/fibe-sdk
+yarn add <package-name>
 ```
 
 ### Peer Dependencies
@@ -23,7 +23,7 @@ npm install @solana/web3.js @coral-xyz/anchor @solana/spl-token
 The SDK exports two main modules:
 
 ```typescript
-import { api, exchange } from '@anthropic-ai/fibe-sdk';
+import { api, exchange } from '<package-name>';
 ```
 
 | Module | Purpose |
@@ -38,7 +38,7 @@ The API client provides access to market data endpoints.
 ### Creating the Client
 
 ```typescript
-import { api } from '@anthropic-ai/fibe-sdk';
+import { api } from '<package-name>';
 
 const apiClient = api.createApiClient('https://api.fibe.com');
 ```
@@ -98,7 +98,7 @@ const orderbook = await apiClient.getL2Book({
 Get OHLCV candlestick data.
 
 ```typescript
-import { api } from '@anthropic-ai/fibe-sdk';
+import { api } from '<package-name>';
 
 const candles = await apiClient.getCandles({
   marketIndex: 0,
@@ -171,7 +171,7 @@ The Exchange client handles all trading operations on the Fibe smart contract.
 ### Creating the Client
 
 ```typescript
-import { api, exchange } from '@anthropic-ai/fibe-sdk';
+import { api, exchange } from '<package-name>';
 import { Connection } from '@solana/web3.js';
 
 // Create API client first
@@ -443,7 +443,7 @@ try {
 ## Complete Example
 
 ```typescript
-import { api, exchange } from '@anthropic-ai/fibe-sdk';
+import { api, exchange } from '<package-name>';
 import { Connection, Keypair } from '@solana/web3.js';
 
 async function main() {

@@ -39,15 +39,15 @@ Trading operations (place, cancel, modify orders) are executed directly on the S
 ### Installation
 
 ```bash
-npm install @anthropic-ai/fibe-sdk
+npm install <package-name>
 # or
-yarn add @anthropic-ai/fibe-sdk
+yarn add <package-name>
 ```
 
 ### Basic Usage
 
 ```typescript
-import { api, exchange } from '@anthropic-ai/fibe-sdk';
+import { api, exchange } from '<package-name>';
 import { Connection } from '@solana/web3.js';
 
 // 1. Create API client for market data
@@ -135,11 +135,25 @@ Error responses include an `error` field:
 
 ## Rate Limits
 
-| Endpoint Type | Rate Limit |
-|---------------|------------|
-| Public endpoints | 100 requests/minute per IP |
-| WebSocket connections | 10 concurrent per IP |
-| WebSocket subscriptions | 100 per connection |
+### IP-based Limits
+
+| Resource | Limit |
+|----------|-------|
+| REST requests | 1200 weight per minute (aggregated) |
+| WebSocket connections | 100 per IP |
+| WebSocket subscriptions | 1000 per IP |
+| WebSocket messages sent | 2000 per minute |
+
+### Request Weights
+
+| Request Type | Weight |
+|--------------|--------|
+| `exchange` actions | `1 + floor(batch_length / 40)` |
+| `l2Book`, `allMids` | 2 |
+| Most `info` requests | 20 |
+| `userRole` | 60 |
+
+For paginated endpoints (`historicalOrders`, `recentTrades`, etc.), additional weight is added per 20 items returned.
 
 ## Next Steps
 

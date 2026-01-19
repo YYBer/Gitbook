@@ -7,7 +7,7 @@ Practical examples for common use cases with the Fibe SDK.
 All examples assume the following setup:
 
 ```typescript
-import { api, exchange } from '@anthropic-ai/fibe-sdk';
+import { api, exchange } from '<package-name>';
 import { Connection, Keypair } from '@solana/web3.js';
 
 // API client for market data
