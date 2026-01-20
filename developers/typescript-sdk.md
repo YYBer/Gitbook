@@ -51,7 +51,24 @@ Get all available markets.
 
 ```typescript
 const markets = await apiClient.getMarkets();
-// Returns: Market[]
+```
+
+**Response:**
+```json
+[
+  {
+    "baseDecimals": 9,
+    "baseMint": "So11111111111111111111111111111111111111112",
+    "label": "SOL/USDC",
+    "lookupTable": "...",
+    "lotSizeInBaseBaseUnits": 1000000,
+    "market": "...",
+    "marketIndex": 0,
+    "quoteDecimals": 6,
+    "quoteMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "tickSizeInQuoteBaseUnits": 100
+  }
+]
 ```
 
 #### getMarket(params)
@@ -60,7 +77,22 @@ Get a specific market by index.
 
 ```typescript
 const market = await apiClient.getMarket({ marketIndex: 0 });
-// Returns: Market
+```
+
+**Response:**
+```json
+{
+  "baseDecimals": 9,
+  "baseMint": "So11111111111111111111111111111111111111112",
+  "label": "SOL/USDC",
+  "lookupTable": "...",
+  "lotSizeInBaseBaseUnits": 1000000,
+  "market": "...",
+  "marketIndex": 0,
+  "quoteDecimals": 6,
+  "quoteMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  "tickSizeInQuoteBaseUnits": 100
+}
 ```
 
 #### getAllMids()
@@ -69,7 +101,14 @@ Get mid prices for all markets.
 
 ```typescript
 const mids = await apiClient.getAllMids();
-// Returns: { "0": "103.45", "1": "0.00001234" }
+```
+
+**Response:**
+```json
+{
+  "0": "123.456",
+  "1": "0.00012345"
+}
 ```
 
 #### getMarketStats(params)
@@ -78,7 +117,16 @@ Get 24-hour statistics for a market.
 
 ```typescript
 const stats = await apiClient.getMarketStats({ marketIndex: 0 });
-// Returns: { bv24h, qv24h, px, px24hAgo }
+```
+
+**Response:**
+```json
+{
+  "bv24h": "1234567.89",
+  "px": "123.456",
+  "px24hAgo": "120.123",
+  "qv24h": "987654.32"
+}
 ```
 
 #### getL2Book(params)
@@ -90,7 +138,24 @@ const orderbook = await apiClient.getL2Book({
   marketIndex: 0,
   priceStep: 0.01  // Price aggregation step
 });
-// Returns: L2Book[]
+```
+
+**Response:**
+```json
+[
+  {
+    "asks": [
+      { "px": "123.50", "sz": "10.5" },
+      { "px": "123.60", "sz": "25.0" }
+    ],
+    "bids": [
+      { "px": "123.40", "sz": "15.2" },
+      { "px": "123.30", "sz": "30.0" }
+    ],
+    "market": 0,
+    "ps": 100
+  }
+]
 ```
 
 #### getCandles(params)
@@ -106,7 +171,24 @@ const candles = await apiClient.getCandles({
   endTimestamp: Date.now(),
   interval: api.CandleInterval.Hour1
 });
-// Returns: Candle[]
+```
+
+**Response:**
+```json
+[
+  {
+    "T": 1705363200000,
+    "bv": "1234.56",
+    "c": "123.50",
+    "h": "124.00",
+    "l": "122.00",
+    "market": 0,
+    "n": 150,
+    "o": "122.50",
+    "qv": "152345.67",
+    "t": 1705359600000
+  }
+]
 ```
 
 **Available Intervals:**
@@ -135,7 +217,21 @@ Get recent trades for a market.
 
 ```typescript
 const trades = await apiClient.getRecentMarketTrades({ marketIndex: 0 });
-// Returns: Trade[]
+```
+
+**Response:**
+```json
+[
+  {
+    "market": 0,
+    "oid": "abc123",
+    "px": "123.45",
+    "side": "B",
+    "sz": "10.5",
+    "time": 1705363200000,
+    "txId": "..."
+  }
+]
 ```
 
 #### getOpenOrders(params)
@@ -146,7 +242,25 @@ Get user's open orders.
 const orders = await apiClient.getOpenOrders({
   user: 'wallet_address_here'
 });
-// Returns: Order[]
+```
+
+**Response:**
+```json
+[
+  {
+    "createdAt": 1705363200000,
+    "market": 0,
+    "oid": "abc123",
+    "origSz": "10.0",
+    "px": "123.45",
+    "side": "B",
+    "status": "O",
+    "sz": "5.0",
+    "txId": "...",
+    "type": "L",
+    "updatedAt": 1705363500000
+  }
+]
 ```
 
 #### getHistoricalOrders(params)
@@ -159,7 +273,25 @@ const history = await apiClient.getHistoricalOrders({
   page: 0,
   pageSize: 50
 });
-// Returns: Order[]
+```
+
+**Response:**
+```json
+[
+  {
+    "createdAt": 1705363200000,
+    "market": 0,
+    "oid": "abc123",
+    "origSz": "10.0",
+    "px": "123.45",
+    "side": "B",
+    "status": "F",
+    "sz": "0.0",
+    "txId": "...",
+    "type": "L",
+    "updatedAt": 1705363500000
+  }
+]
 ```
 
 ---
@@ -407,6 +539,23 @@ interface BookLevel {
   sz: string;
 }
 ```
+
+### Enum Values
+
+| Field | Value | Description |
+|-------|-------|-------------|
+| `side` | `B` | Bid (buy) |
+| `side` | `A` | Ask (sell) |
+| `type` | `M` | Market order |
+| `type` | `L` | Limit order |
+| `status` | `O` | Open |
+| `status` | `F` | Filled |
+| `status` | `C` | Cancelled |
+
+### Notes
+
+- All prices, sizes, and volumes are returned as **strings** to preserve decimal precision.
+- Timestamps are in milliseconds (Unix epoch).
 
 ---
 
