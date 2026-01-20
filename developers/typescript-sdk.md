@@ -10,13 +10,13 @@ npm install <package-name>
 yarn add <package-name>
 ```
 
-### Peer Dependencies
+### Dependencies
 
-The SDK requires the following Solana dependencies:
+The SDK includes the following Solana dependencies (installed automatically):
 
-```bash
-npm install @solana/web3.js @coral-xyz/anchor @solana/spl-token
-```
+- `@solana/web3.js` - Solana Web3 library
+- `@coral-xyz/anchor` - Anchor framework
+- `@solana/spl-token` - SPL Token library
 
 ## SDK Structure
 
@@ -428,15 +428,42 @@ try {
   await exchangeClient.sendAndConfirmTx(tx, wallet);
   console.log('Order placed successfully');
 } catch (error) {
-  if (error.message.includes('insufficient funds')) {
-    console.error('Not enough balance');
-  } else if (error.message.includes('order not found')) {
-    console.error('Order does not exist');
-  } else {
-    console.error('Error:', error.message);
-  }
+  console.error('Error:', error.message);
 }
 ```
+
+### Error Messages
+
+**Order Parameters:**
+
+| Error Message | Cause |
+|---------------|-------|
+| `Either baseQuantity or quoteQuantity must be provided` | Missing quantity parameter |
+| `Only one of baseQuantity or quoteQuantity should be provided` | Both quantities provided |
+| `The price is required for limit orders` | Missing price for limit order |
+| `oldOrderId and newOrderId cannot be the same` | Modify order using same ID |
+| `invalid maxBaseQuantity and maxQuoteQuantity` | Invalid quantity values |
+| `newSide must be bid` | Wrong side for bid operation |
+| `newSide must be ask` | Wrong side for ask operation |
+
+**Market/Account:**
+
+| Error Message | Cause |
+|---------------|-------|
+| `dex config not found` | DEX not initialized |
+| `Token mint base not found` | Invalid base token mint |
+| `Token mint quote not found` | Invalid quote token mint |
+| `No mid price found for market ${marketIndex}` | No price data available |
+| `old tick account not found` | Order not found when modifying |
+| `lookup table account not found` | Invalid lookup table address |
+| `market label must be 8 bytes` | Invalid market label length |
+
+**WebSocket:**
+
+| Error Message | Cause |
+|---------------|-------|
+| `WebSocket is not connected` | Sending message before connection established |
+| `invalid price step ${priceStep}` | Invalid orderbook price step value |
 
 ---
 
